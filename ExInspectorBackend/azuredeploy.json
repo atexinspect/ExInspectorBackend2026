@@ -54,7 +54,7 @@
     },
     "repoURL": {
       "type": "string",
-      "defaultValue": "https://github.com/atexinspect/ExpertBackend.git",
+      "defaultValue": "https://github.com/atexinspect/ExpertBackend2026.git",
       "metadata": {
         "description": "The URL for the GitHub repository that contains the project to deploy."
       }
