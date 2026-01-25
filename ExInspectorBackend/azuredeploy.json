@@ -54,7 +54,7 @@
     },
     "repoURL": {
       "type": "string",
-      "defaultValue": "https://github.com/atexinspect/ExpertBackend2026.git",
+      "defaultValue": "https://github.com/atexinspect/ExInspectorBackend2026.git",
       "metadata": {
         "description": "The URL for the GitHub repository that contains the project to deploy."
       }
@@ -68,10 +68,10 @@
     }
   },
   "variables": {
-    "hostingPlanName": "[format('{0}-hosting-expert', uniqueString(resourceGroup().id))]",
-    "websiteName": "[format('{0}-service-expert', uniqueString(resourceGroup().id))]",
-    "sqlserverName": "[format('{0}-dbserver-expert', uniqueString(resourceGroup().id))]",
-    "databaseName": "ExpertDB"
+    "hostingPlanName": "[format('{0}-hosting-exinspector', uniqueString(resourceGroup().id))]",
+    "websiteName": "[format('{0}-service-exinspector', uniqueString(resourceGroup().id))]",
+    "sqlserverName": "[format('{0}-dbserver-exinspector', uniqueString(resourceGroup().id))]",
+    "databaseName": "ExInspectorDB"
   },
   "resources": [
     {
@@ -189,7 +189,3 @@
     }
   }
 }
-
-
-
-
