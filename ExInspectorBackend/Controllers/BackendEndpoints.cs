@@ -27,6 +27,7 @@ namespace ExInspectorBackend.Controllers
                 await db.MembershipUsersInRoles.ExecuteDeleteAsync();
                 await db.Schedules.ExecuteDeleteAsync();
                 await db.WorkOrders.ExecuteDeleteAsync();
+                await db.Settings.ExecuteDeleteAsync();
                 return Results.Ok();
             });
 
@@ -47,6 +48,7 @@ namespace ExInspectorBackend.Controllers
                 await db.MembershipUsersInRoles.Where(a => a.Deleted == true).ExecuteDeleteAsync();
                 await db.Schedules.Where(a => a.Deleted == true).ExecuteDeleteAsync();
                 await db.WorkOrders.Where(a => a.Deleted == true).ExecuteDeleteAsync();
+                await db.Settings.Where(a => a.Deleted == true).ExecuteDeleteAsync();
                 return Results.Ok();
             });
 

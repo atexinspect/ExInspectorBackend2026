@@ -5,40 +5,52 @@ namespace ExInspectorBackend.Middleware
     public class Middleware
     {
         private readonly RequestDelegate _next;
-        private const string XMID = "XMid";
-        
-        public Middleware(RequestDelegate next)
+        private readonly ILogger<Middleware> _logger;
+
+        public Middleware(RequestDelegate next, ILogger<Middleware> logger)
         {
             _next = next;
+            _logger = logger;
         }
-        
+
         public async Task InvokeAsync(HttpContext context, ApiKeyService apiKeyService)
         {
-            if (!context.Request.Headers.TryGetValue(XMID, out var extractedXMid))
+
+            // Normalize path (remove duplicate slashes)
+            var requestPath = context.Request.Path.Value?.Replace("//", "/") ?? string.Empty;
+
+            // Allow API key management endpoints to bypass API key validation
+            if (requestPath.StartsWith("/api/apikey", StringComparison.OrdinalIgnoreCase))
             {
+                await _next(context);
+                return;
+            }
+
+            // Get API key from headers
+            var apiKey = context.Request.Headers["XMid"].FirstOrDefault() 
+                         ?? context.Request.Headers["ZUMO-API-KEY"].FirstOrDefault();
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("API Key not provided for path: {Path}", context.Request.Path);
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsync("Api Key was not provided.");
                 return;
             }
 
-            // First try database key (rotating keys)
-            var isValid = await apiKeyService.ValidateKeyAsync(extractedXMid);
-
-            // Fallback to appsettings.json key (for backward compatibility during migration)
+            // Validate the API key against the database
+            var isValid = await apiKeyService.ValidateKeyAsync(apiKey);
+            
             if (!isValid)
             {
-                var appSettings = context.RequestServices.GetRequiredService<IConfiguration>();
-                var xMid = appSettings.GetValue<string>(XMID);
-                var xMid1 = FormatAPI.FormatString(xMid);
-
-                if (!xMid1.Equals(extractedXMid))
-                {
-                    context.Response.StatusCode = 401;
-                    await context.Response.WriteAsync("Unauthorized client.");
-                    return;
-                }
+                _logger.LogWarning("Invalid or expired API Key for path: {Path}", context.Request.Path);
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Invalid or expired API key.");
+                return;
             }
 
+            _logger.LogDebug("Valid API key for path: {Path}", context.Request.Path);
+            
             await _next(context);
         }
     }

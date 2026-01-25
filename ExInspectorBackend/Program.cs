@@ -40,4 +40,13 @@ app.UseHttpsRedirection();
 // Configure and run the web service.
 app.MapControllers();
 app.MapBackendEndpoints();
+
+// Add this temporarily after building the app
+using (var scope = app.Services.CreateScope())
+{
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var adminSecret = config["AdminSecret"];
+    Console.WriteLine($"Loaded AdminSecret from config: {adminSecret ?? "(not set)"}");
+}
+
 app.Run();
