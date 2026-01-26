@@ -37,6 +37,7 @@ namespace ExInspectorBackend.Services
                 {
                     previousKeySetting = new Settings
                     {
+                        Id = Guid.NewGuid().ToString(),
                         Description = PREVIOUS_KEY,
                         Notes = currentKeySetting.Notes,
                         Active = true
@@ -56,6 +57,7 @@ namespace ExInspectorBackend.Services
             {
                 currentKeySetting = new Settings
                 {
+                    Id = Guid.NewGuid().ToString(),
                     Description = CURRENT_KEY,
                     Notes = newKey,
                     Active = true
@@ -77,6 +79,7 @@ namespace ExInspectorBackend.Services
             {
                 expiresSetting = new Settings
                 {
+                    Id = Guid.NewGuid().ToString(),
                     Description = KEY_EXPIRES,
                     Notes = expiresAt.ToString("o"),
                     Active = true
