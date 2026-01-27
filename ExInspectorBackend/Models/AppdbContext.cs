@@ -52,7 +52,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         const string CURRENT_KEY = "ApiKey_Current";
         const string KEY_EXPIRES = "ApiKey_ExpiresAt";
+        const string FALLBACK_KEY = "ApiKey_Fallback";
 
+        // Seed current key with expiration
         var existingKey = await context.Settings
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY);
@@ -65,7 +67,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             var currentKeySetting = new Settings
             {
-               Id = Guid.NewGuid().ToString(),
+                Id = Guid.NewGuid().ToString(),
                 Description = CURRENT_KEY,
                 Notes = initialKey,
                 Active = true
@@ -73,7 +75,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             var expiresSetting = new Settings
             {
-               Id = Guid.NewGuid().ToString(),
+                Id = Guid.NewGuid().ToString(),
                 Description = KEY_EXPIRES,
                 Notes = expiresAt.ToString("o"),
                 Active = true
@@ -81,11 +83,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             context.Settings.Add(currentKeySetting);
             context.Settings.Add(expiresSetting);
-            await context.SaveChangesAsync();
 
             Console.WriteLine($"Initial API Key generated: {initialKey}");
             Console.WriteLine($"Expires at: {expiresAt:yyyy-MM-dd HH:mm:ss} UTC");
         }
+
+        // Seed fallback key (no expiration)
+        var existingFallbackKey = await context.Settings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Description == FALLBACK_KEY);
+
+        if (existingFallbackKey == null)
+        {
+            var fallbackKeySetting = new Settings
+            {
+                Id = Guid.NewGuid().ToString(),
+                Description = FALLBACK_KEY,
+                Notes = "pgH7QzFHJx4w46fI5Uzi4RvtTwlEXp",
+                Active = true
+            };
+
+            context.Settings.Add(fallbackKeySetting);
+
+            Console.WriteLine($"Fallback API Key seeded: pgH7QzFHJx4w46fI5Uzi4RvtTwlEXp");
+        }
+
+        await context.SaveChangesAsync();
     }
 
     private static string GenerateSecureKey()

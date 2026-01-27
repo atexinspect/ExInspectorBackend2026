@@ -27,7 +27,7 @@ namespace ExInspectorBackend.Middleware
             }
 
             // Get API key from headers
-            var apiKey = context.Request.Headers["XMid"].FirstOrDefault() 
+            var apiKey = context.Request.Headers["XMid"].FirstOrDefault()
                          ?? context.Request.Headers["ZUMO-API-KEY"].FirstOrDefault();
 
             if (string.IsNullOrEmpty(apiKey))
@@ -40,7 +40,7 @@ namespace ExInspectorBackend.Middleware
 
             // Validate the API key against the database
             var isValid = await apiKeyService.ValidateKeyAsync(apiKey);
-            
+
             if (!isValid)
             {
                 _logger.LogWarning("Invalid or expired API Key for path: {Path}", context.Request.Path);
@@ -50,7 +50,7 @@ namespace ExInspectorBackend.Middleware
             }
 
             _logger.LogDebug("Valid API key for path: {Path}", context.Request.Path);
-            
+
             await _next(context);
         }
     }
