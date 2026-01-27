@@ -88,7 +88,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Console.WriteLine($"Expires at: {expiresAt:yyyy-MM-dd HH:mm:ss} UTC");
         }
 
-        // Seed fallback key in hashed format
+        // Seed fallback key
         var existingFallbackKey = await context.Settings
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Description == FALLBACK_KEY);
@@ -99,7 +99,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             {
                 Id = Guid.NewGuid().ToString(),
                 Description = FALLBACK_KEY,
-                // Hashed value of the actual fallback key
                 Notes = "+VHfXxy9JC0G9vLmRrc3jMh/KTxbeV4WrBkUfdfowHM=",
                 Active = true
             };
