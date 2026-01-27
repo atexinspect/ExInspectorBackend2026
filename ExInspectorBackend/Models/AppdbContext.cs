@@ -52,6 +52,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         const string CURRENT_KEY = "ApiKey_Current";
         const string KEY_EXPIRES = "ApiKey_ExpiresAt";
+        const string FALLBACK_KEY = "ApiKey_Fallback";
 
         var existingKey = await context.Settings
             .AsNoTracking()
@@ -86,6 +87,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Console.WriteLine($"Initial API Key generated: {initialKey}");
             Console.WriteLine($"Expires at: {expiresAt:yyyy-MM-dd HH:mm:ss} UTC");
         }
+
+        // Seed fallback key in hashed format
+        var existingFallbackKey = await context.Settings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Description == FALLBACK_KEY);
+
+        if (existingFallbackKey == null)
+        {
+            var fallbackKeySetting = new Settings
+            {
+                Id = Guid.NewGuid().ToString(),
+                Description = FALLBACK_KEY,
+                // Hashed value of the actual fallback key
+                Notes = "+VHfXxy9JC0G9vLmRrc3jMh/KTxbeV4WrBkUfdfowHM=",
+                Active = true
+            };
+
+            context.Settings.Add(fallbackKeySetting);
+            Console.WriteLine("Fallback API Key hash seeded");
+        }
+
+        await context.SaveChangesAsync();
     }
 
     private static string GenerateSecureKey()
