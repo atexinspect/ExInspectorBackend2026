@@ -1,5 +1,6 @@
 ﻿using ExInspectorBackend.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -7,19 +8,27 @@ public class ApiKeyService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<ApiKeyService> _logger;
+    private readonly IMemoryCache _cache;
+
     private const string API_KEY_PREFIX = "ApiKey_";
     private const string CURRENT_KEY = "ApiKey_Current";
     private const string KEY_EXPIRES = "ApiKey_ExpiresAt";
     private const string PREVIOUS_KEY = "ApiKey_Previous";
     private const string FALLBACK_KEY = "ApiKey_Fallback";
 
-    public ApiKeyService(AppDbContext context, ILogger<ApiKeyService> logger)
+    // Cache keys
+    private const string CACHE_FALLBACK_HASH = "ApiKey_FallbackHash";
+    private const string CACHE_CURRENT_KEY = "ApiKey_CurrentCached";
+    private const string CACHE_CURRENT_EXPIRES = "ApiKey_CurrentExpiresCached";
+    private const string CACHE_PREVIOUS_KEY = "ApiKey_PreviousCached";
+
+    public ApiKeyService(AppDbContext context, ILogger<ApiKeyService> logger, IMemoryCache cache)
     {
         _context = context;
         _logger = logger;
+        _cache = cache;
     }
 
-    // Add SHA256 hashing method
     private static string HashApiKey(string apiKey)
     {
         using (var sha256 = SHA256.Create())
@@ -31,60 +40,83 @@ public class ApiKeyService
 
     public async Task<bool> ValidateKeyAsync(string key)
     {
-        // 1. Check fallback key (stored as hash) - Priority check
-        var fallbackKeySetting = await _context.Settings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Description == FALLBACK_KEY && s.Active);
-
-        if (fallbackKeySetting != null)
+        // 1. Check fallback key (cached hash comparison)
+        var fallbackHash = await _cache.GetOrCreateAsync(CACHE_FALLBACK_HASH, async entry =>
         {
-            // Hash the incoming key and compare with stored hash
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24); // Cache for 24 hours
+
+            var setting = await _context.Settings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Description == FALLBACK_KEY && s.Active);
+
+            return setting?.Notes;
+        });
+
+        if (fallbackHash != null)
+        {
             var hashedIncomingKey = HashApiKey(key);
-            if (fallbackKeySetting.Notes == hashedIncomingKey)
+            if (fallbackHash == hashedIncomingKey)
             {
-                _logger.LogInformation("Valid fallback API key authenticated");
+                _logger.LogDebug("Valid fallback API key authenticated (cached)");
                 return true;
             }
         }
 
-        // 2. Check current key (stored as plain text)
-        var currentKeySetting = await _context.Settings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY && s.Active);
-
-        if (currentKeySetting != null && currentKeySetting.Notes == key)
+        // 2. Check current key (cached)
+        var currentKeyData = await _cache.GetOrCreateAsync(CACHE_CURRENT_KEY, async entry =>
         {
-            // Check expiration
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5); // Cache for 5 minutes
+
+            var keySetting = await _context.Settings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY && s.Active);
+
             var expiresSetting = await _context.Settings
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Description == KEY_EXPIRES);
 
-            if (expiresSetting != null && DateTime.TryParse(expiresSetting.Notes, out var expiresAt))
+            DateTime? expiresAt = null;
+            if (expiresSetting != null && DateTime.TryParse(expiresSetting.Notes, out var parsed))
             {
-                if (expiresAt > DateTime.UtcNow)
-                {
-                    _logger.LogDebug("Valid current API key authenticated");
-                    return true;
-                }
-                else
-                {
-                    _logger.LogWarning("Current API key has expired");
-                }
+                expiresAt = parsed;
+            }
+
+            return new { Key = keySetting?.Notes, ExpiresAt = expiresAt };
+        });
+
+        if (currentKeyData?.Key != null && currentKeyData.Key == key)
+        {
+            if (currentKeyData.ExpiresAt.HasValue && currentKeyData.ExpiresAt.Value > DateTime.UtcNow)
+            {
+                _logger.LogDebug("Valid current API key authenticated (cached)");
+                return true;
+            }
+            else if (currentKeyData.ExpiresAt.HasValue)
+            {
+                _logger.LogWarning("Current API key has expired");
+                // Invalidate cache to force refresh
+                _cache.Remove(CACHE_CURRENT_KEY);
             }
         }
 
-        // 3. Check previous key (grace period - 24 hours after rotation)
-        var previousKeySetting = await _context.Settings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Description == PREVIOUS_KEY && s.Active);
-
-        if (previousKeySetting != null && previousKeySetting.Notes == key)
+        // 3. Check previous key (cached - grace period)
+        var previousKeyData = await _cache.GetOrCreateAsync(CACHE_PREVIOUS_KEY, async entry =>
         {
-            // Allow previous key for 24 hours after it was updated
-            var gracePeriodEnd = previousKeySetting.UpdatedAt?.AddHours(24);
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1); // Cache for 1 hour
+
+            var setting = await _context.Settings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Description == PREVIOUS_KEY && s.Active);
+
+            return new { Key = setting?.Notes, UpdatedAt = setting?.UpdatedAt };
+        });
+
+        if (previousKeyData?.Key != null && previousKeyData.Key == key)
+        {
+            var gracePeriodEnd = previousKeyData.UpdatedAt?.AddHours(24);
             if (gracePeriodEnd > DateTimeOffset.UtcNow)
             {
-                _logger.LogWarning("Client using previous API key (grace period)");
+                _logger.LogWarning("Client using previous API key (grace period, cached)");
                 return true;
             }
         }
@@ -93,13 +125,12 @@ public class ApiKeyService
         return false;
     }
 
-    // Rest of your existing methods remain unchanged
     public async Task<(string Key, DateTime ExpiresAt)> GenerateNewKeyAsync()
     {
         var newKey = GenerateSecureKey();
         var expiresAt = DateTime.UtcNow.AddDays(30);
 
-        // Move current key to previous (grace period for clients to update)
+        // Move current key to previous
         var currentKeySetting = await _context.Settings
             .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY);
 
@@ -168,6 +199,10 @@ public class ApiKeyService
         }
 
         await _context.SaveChangesAsync();
+
+        // Invalidate caches after rotation
+        _cache.Remove(CACHE_CURRENT_KEY);
+        _cache.Remove(CACHE_PREVIOUS_KEY);
 
         _logger.LogInformation("New API key generated. Expires at: {ExpiresAt:yyyy-MM-dd HH:mm} UTC", expiresAt);
 
