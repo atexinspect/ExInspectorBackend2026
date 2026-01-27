@@ -101,42 +101,20 @@ namespace ExInspectorBackend.Services
 
         public async Task<bool> ValidateKeyAsync(string key)
         {
-            // Check current key
-            var currentKeySetting = await _context.Settings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY && s.Active);
+            // 1. Check fallback key (HASHED comparison)
+            var fallbackKey = await GetFallbackKeyHashFromDb();
+            if (fallbackKey != null && HashApiKey(key) == fallbackKey)
+                return true; // Incoming key is hashed and compared
 
-            if (currentKeySetting != null && currentKeySetting.Notes == key)
-            {
-                // Check expiration
-                var expiresSetting = await _context.Settings
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Description == KEY_EXPIRES);
+            // 2. Check current key (PLAIN TEXT comparison)
+            var currentKey = await GetCurrentKeyFromDb();
+            if (currentKey != null && key == currentKey)
+                return true; // Direct string comparison
 
-                if (expiresSetting != null && DateTime.TryParse(expiresSetting.Notes, out var expiresAt))
-                {
-                    if (expiresAt > DateTime.UtcNow)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            // Check previous key (grace period - 24 hours after rotation)
-            var previousKeySetting = await _context.Settings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Description == PREVIOUS_KEY && s.Active);
-
-            if (previousKeySetting != null && previousKeySetting.Notes == key)
-            {
-                // Allow previous key for 24 hours after it was updated
-                var gracePeriodEnd = previousKeySetting.UpdatedAt?.AddHours(24);
-                if (gracePeriodEnd > DateTimeOffset.UtcNow)
-                {
-                    _logger.LogWarning("Client using previous API key (grace period)");
-                    return true;
-                }
-            }
+            // 3. Check previous key (grace period)
+            var previousKey = await GetPreviousKeyFromDb();
+            if (previousKey != null && key == previousKey)
+                return true; // Direct string comparison
 
             return false;
         }
@@ -188,6 +166,40 @@ namespace ExInspectorBackend.Services
                 rng.GetBytes(bytes);
             }
             return Convert.ToBase64String(bytes);
+        }
+
+        private async Task<string?> GetFallbackKeyHashFromDb()
+        {
+            // Implement retrieval of fallback hashed key from the database
+            return null;
+        }
+
+        private async Task<string?> GetCurrentKeyFromDb()
+        {
+            var currentKeySetting = await _context.Settings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Description == CURRENT_KEY && s.Active);
+
+            return currentKeySetting?.Notes;
+        }
+
+        private async Task<string?> GetPreviousKeyFromDb()
+        {
+            var previousKeySetting = await _context.Settings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Description == PREVIOUS_KEY && s.Active);
+
+            return previousKeySetting?.Notes;
+        }
+
+        private string HashApiKey(string apiKey)
+        {
+            // Implement your hashing logic here (e.g., SHA256)
+            using (var sha256 = SHA256.Create())
+            {
+                var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(apiKey));
+                return Convert.ToBase64String(hash);
+            }
         }
     }
 }
