@@ -61,7 +61,7 @@
     },
     "branch": {
       "type": "string",
-      "defaultValue": "master",
+      "defaultValue": "AzureNET10",
       "metadata": {
         "description": "The branch of the GitHub repository to use."
       }
